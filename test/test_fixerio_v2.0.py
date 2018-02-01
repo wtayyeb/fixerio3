@@ -1,0 +1,40 @@
+from fixerio import fixerio
+
+
+def main():
+    test = fixerio.Fixerio()
+    response = test.convert(20, base='USD', dest='JPY', date='2018-01-10')
+    print(response, end='\n\n')
+    response = test.convert(20, dest='JPY', base='EUR')
+    print(response, end='\n\n')
+    response = test.convert(20, dest='JPY')
+    print(response, end='\n\n')
+    response = test.get_rates(date='2010-12-31')
+    print(response, end='\n\n')
+    response = test.get_rates()
+    print(response, end='\n\n')
+    print('**********PRINTING CACHE************')
+    print(test._cache)
+    print('**********DELETING CACHE************')
+    test._clear_cache()
+    print(test._cache, end='\n\n')
+    response = test.convert(1000.0, 'EUR', date='2010-12-31')
+    print(response, end='\n\n')
+    response = test.convert(1000.0, 'JPY', date='2010-12-31')
+    print(response, end='\n\n')
+    response = test.convert(1000.0, base='JPY', dest='JPY')
+    print(response, end='\n\n')
+    response = test.convert(1000.0, base='EUR', dest='JPY', date='2010-12-31')
+    print(response, end='\n\n')
+    response = test.get_rates(date='latest', base='USD')
+    print(response, end='\n\n')
+    response = test.get_rates(date='latest', symbols='JPY')
+    print(response, end='\n\n')
+    response = test.get_rates(date='latest', base='USD', symbols='EUR, JPY')
+    print(response, end='\n\n')
+    response = test.get_rates(date='latest', base='USD', symbols=['EUR', 'JPY'])
+    print(response, end='\n\n')
+
+
+if __name__ == '__main__':
+    main()

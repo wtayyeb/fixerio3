@@ -1,4 +1,4 @@
-from fixerio import fixerio
+import fixerio
 
 
 def main():
@@ -14,10 +14,10 @@ def main():
     response = test.get_rates()
     print(response, end='\n\n')
     print('**********PRINTING CACHE************')
-    print(test._cache)
+    print(test.get_cache())
     print('**********DELETING CACHE************')
-    test._clear_cache()
-    print(test._cache, end='\n\n')
+    test.clear_cache()
+    print(test.get_cache(), end='\n\n')
     response = test.convert(1000.0, 'EUR', date='2010-12-31')
     print(response, end='\n\n')
     response = test.convert(1000.0, 'JPY', date='2010-12-31')

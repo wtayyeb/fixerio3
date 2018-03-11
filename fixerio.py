@@ -4,10 +4,10 @@ Both modules can be used as independent functions or as methods on Fixerio objec
 The independent functions fetch data every time from the API but the methods on Fiexerio
 objects use caching to avoid having to wait for API queries.
 
-get_rates(date: str = LATEST, base: str = DEFAULT_BASE, symbols: str = None) -> dict:
-convert(amount: float, dest: str, base: str = DEFAULT_BASE, date: str = LATEST) -> float:
+get_rates(date: str = DEFAULT_DATE, base: str = DEFAULT_BASE, symbols: str = None) -> dict:
+convert(amount: float, dest: str, base: str = DEFAULT_BASE, date: str = DEFAULT_DATE) -> float:
 
-NOTE: Whenever using the class, you are responsible for calling the _clear_cache() method
+NOTE: Whenever using the class, you are responsible for calling the clear_cache() method
 whenever you see fit so that the cache does not get to large in size (which shouldn't be
 a concern for most people)
 """
@@ -16,10 +16,10 @@ from datetime import date as dtdate
 from datetime import timedelta
 from datetime import datetime
 import requests
-from fixerio.exceptions import FixerioException
-from fixerio.exceptions import FixerioInvalidDate
-from fixerio.exceptions import FixerioInvalidCurrency
-from fixerio.exceptions import FixerioCurrencyUnavailable
+from exceptions import FixerioException
+from exceptions import FixerioInvalidDate
+from exceptions import FixerioInvalidCurrency
+from exceptions import FixerioCurrencyUnavailable
 from string import whitespace
 
 HTTP_BASE_URL = 'http://api.fixer.io/'
@@ -41,9 +41,9 @@ UPDATE_TIME_UTC = 15  # rates are updated at 3pm (15:00) UTC (10am ET)
 SPECIFIC_CURRENCIES = set()
 ALL_CURRENCIES = {"AUD", "BGN", "BRL", "CAD", "CHF", "CNY", "CZK",
                   "DKK", "EUR", "GBP", "HKD", "HRK", "HUF", "IDR",
-                  "ILS", "INR", "JPY", "KRW", "MXN", "MYR", "NOK",
-                  "NZD", "PHP", "PLN", "RON", "RUB", "SEK", "SGD",
-                  "THB", "TRY", "USD", "ZAR"}
+                  "ILS", "INR", "ISK", "JPY", "KRW", "MXN", "MYR",
+                  "NOK", "NZD", "PHP", "PLN", "RON", "RUB", "SEK",
+                  "SGD", "THB", "TRY", "USD", "ZAR"}
 # Modify currencies to specify which currencies to retrieve when 'symbols'
 # is omitted in the 'get_rates' method
 CURRENCIES = ALL_CURRENCIES
@@ -135,70 +135,64 @@ def _format_currency(currencies):
 
 
 def get_rates(date: str=DEFAULT_DATE, base: str=DEFAULT_BASE, symbols=None) -> dict:
-    """ Fetches rates for the given parameters (no caching) """
-    try:
-        url = BASE_URL + date
-        if symbols is None:
-            payload = dict(base=base)
-        elif isinstance(symbols, list):
-            symbols = ','.join(symbols)
-            payload = dict(base=base, symbols=symbols)
-        elif isinstance(symbols, str):
-            payload = dict(base=base, symbols=symbols)
-        else:
-            raise Exception
-        response = requests.get(url, params=payload)
-        json_data = response.json()
-        return json_data['rates']
-    except Exception:
-        raise Exception("""
-        Check your input and try again
+    """ Fetches rates for the given parameters (NO CACHING)
 
         date: OPTIONAL type str
-            a date form January 4th 1999 to today in the format 'yyyy-mm-dd' 
+            a date form January 4th 1999 to today in the format 'yyyy-mm-dd'
             or 'latest'. If omitted, DEFAULT_DATE is used (usually 'latest' if you haven't changed it).
 
         base: OPTIONAL type str
-            a 3 letter currency code such as 'EUR'. If omitted, DEFAULT_BASE is used 
+            a 3 letter currency code such as 'EUR'. If omitted, DEFAULT_BASE is used
             (usually 'USD' if you haven't changed it).
 
-        symbols: OPTIONAL type str
-            a string of comma separated currency codes like 'USD,JPY,EUR' or list like ['USD', 'EUR']. 
+        symbols: OPTIONAL type str or list
+            a string of comma separated currency codes like 'USD,JPY,EUR' or list like ['USD', 'EUR'].
             If omitted, all rates are returned for the corresponding base and date.
-        """)
+    """
+    url = BASE_URL + date
+    if symbols is None:
+        payload = dict(base=base)
+    elif isinstance(symbols, list):
+        symbols = ','.join(symbols)
+        payload = dict(base=base, symbols=symbols)
+    elif isinstance(symbols, str):
+        payload = dict(base=base, symbols=symbols)
+    else:
+        raise ValueError(""" Invalid value entered for the symbols parameter.
+                             Check your input and try again """)
+    response = requests.get(url, params=payload)
+    json_data = response.json()
+    return json_data['rates']
 
 
 def convert(amount: float, dest: str, base: str=DEFAULT_BASE, date=DEFAULT_DATE) -> float:
-    """ Converts an amount from the base currency to the dest currency (no caching) """
-    try:
-        if base == dest:
-            return amount
-        conversion_rate = get_rates(date=date, base=base, symbols=dest)
-        return float(amount) * conversion_rate[dest]
-    except Exception:
-        raise Exception("""
-        Check your input and try again
+    """ Converts an amount from the base currency to the dest currency (NO CACHING)
 
-        amount: REQUIRED type int or str
+        amount: REQUIRED type float or str
             an integer or float amount of the base currency to convert.
 
         dest: REQUIRED type str
             a 3 letter currency code such as 'JPY'.
 
         base: OPTIONAL type str
-            a 3 letter currency code such as 'EUR'. If omitted, DEFAULT_BASE is used 
+            a 3 letter currency code such as 'EUR'. If omitted, DEFAULT_BASE is used
             (usually 'USD' if you haven't changed it).
-            
+
         date: OPTIONAL type str
-            a date form January 4th 1999 to today in the format 'yyyy-mm-dd' 
-            or 'latest'. If omitted, DEFAULT_DATE is used (usually 'latest' if you haven't changed it). 
-        """)
+            a date form January 4th 1999 to today in the format 'yyyy-mm-dd'
+            or 'latest'. If omitted, DEFAULT_DATE is used (usually 'latest' if you haven't changed it).
+    """
+    if base == dest:
+        return amount
+    conversion_rate = get_rates(date=date, base=base, symbols=dest)
+    return float(amount) * conversion_rate[dest]
 
 
 class Fixerio:
     """ Class to interact with the free fixer.io API
         Similar to the 'get_rates' and 'convert' functions but uses caching to
-        avoid invoking the fixer.io API on every request """
+        avoid invoking the fixer.io API on every request
+    """
 
     def __init__(self):
         self._cache = dict()
@@ -217,16 +211,13 @@ class Fixerio:
                         else:
                             return True
                     else:
-                        if CURRENCIES.difference({base}).issubset(self._cache[base][date]['rates'].keys()):
-                            return True
-                        else:
-                            return False
+                        return CURRENCIES.difference({base}).issubset(self._cache[base][date]['rates'].keys())
                 else:
                     return False
             else:
                 return False
-        except Exception as e:
-            raise Exception('Error checking cache. Check for correct usage of method') from e
+        except KeyError:
+            return False
 
     def _return_cache(self, base, symbols, date=_date()):
         """ Returns cached items if available (check availability with '_in_cache') """
@@ -236,9 +227,9 @@ class Fixerio:
             cached_items = {x: self._cache[base][date]['rates'][x]
                             for x in self._cache[base][date]['rates'] if x in symbols}
             return cached_items
-        except Exception as e:
-            raise Exception('Error returning cache. Make sure to first check if the '
-                            'object is in the cache with the "_in_cache" method') from e
+        except KeyError as e:
+            raise ValueError('Error returning cache. Make sure to first check if the '
+                             'object is in the cache with the "_in_cache" method') from e
 
     def _to_cache(self, json_data):
         """ Caches the given info for future use """
@@ -251,28 +242,38 @@ class Fixerio:
                 self._cache[base][date] = dict()
             self._cache[base][date]['rates'] = json_data['rates']
             return None
-        except Exception as e:
-            raise Exception("Error caching data. Make sure you are passing in the "
-                            "json_data portion of the response") from e
+        except KeyError as e:
+            raise FixerioException("Error caching data. Make sure you are passing in the "
+                                   "json_data portion of the response") from e
 
-    def _clear_cache(self):
-        self._cache = dict()
+    def clear_cache(self):
+        """ Clears any references to the cache dictionary """
+        self._cache.clear()
 
-    def get_rates(self, date=DEFAULT_DATE, base=DEFAULT_BASE, symbols=None):
-        """ Returns rates for the specified parameters below
-            From cache if available, otherwise from the API
+    def get_cache(self):
+        """ Returns all contents in the cache """
+        return self._cache
+
+    def get_rates(self, date: str=DEFAULT_DATE, base: str=DEFAULT_BASE, symbols=None) -> dict:
+        """
+        Returns rates based on the specified parameters below.
+        From cache if available, otherwise from the API call.
+
         date
-            :param date: date to quote rates on.
-            :type date: str (yyyy-mm-dd)
+            :param date: a date to quote rates on. If omitted, DEFAULT_DATE is used
+            :type: str in the format 'yyyy-mm-dd' or 'latest'
 
         base
-            :param base: currency to quote rates.
-            :type base: str (e.g. 'USD')
+            :param base: currency to quote rates against. If omitted, DEFAULT_BASE is used
+            :type: str (e.g. 'USD')
 
         symbols
-            :param symbols: currency symbols to request specific exchange rates.
-            :type symbols: str (e.g. 'USD,JPY,EUR')
+            :param symbols: currency symbols to request specific exchange rates for
+            :type: str or list e.g. 'USD,JPY,EUR' or [USD, JPY, EUR]
+
+        :return dict: a dictionary with the requested rates
         """
+
         if not _valid_date(date):
             raise FixerioInvalidDate('Please enter a valid date')
         if not _valid_currency(base):
@@ -290,40 +291,56 @@ class Fixerio:
                 payload = dict(base=base, symbols=symbols)
             response = requests.get(url, params=payload)
             json_data = response.json()
+            if 'error' in json_data:
+                raise FixerioException('Something went wrong with your request.'
+                                       'Error message: {}'.format(json_data['error']))
             self._to_cache(json_data)
-            return json_data['rates']
+            try:
+                return json_data['rates']
+            except KeyError:
+                raise FixerioException('Something went wrong with your request.'
+                                       'Please check your inputs and try again.')
 
     def convert(self, amount, dest, base=DEFAULT_BASE, date=DEFAULT_DATE):
-        """ Converts an amount from the base currency to the dest currency
-            Fetches from cache if available, otherwise from the API
+        """
+        Converts an amount from the base currency to the dest currency.
+        Fetches from cache if available, otherwise from the API call.
+
         amount
             :param amount: amount of base currency to convert
-            :type amount: str, int or float
+            :type: str, int or float
+
         date
-            :param date: date to quote rates on.
-            :type date: str (yyyy-mm-dd)
+            :param date: a date to quote rates on. If omitted, DEFAULT_DATE is used
+            :type: str in the format 'yyyy-mm-dd' or 'latest'
 
         base
-            :param base: currency to quote rates.
-            :type base: str (e.g. 'USD')
+            :param base: currency to quote rates against. If omitted, DEFAULT_BASE is used
+            :type: str (e.g. 'USD')
 
         dest
             :param dest: currency to convert to
-            :type dest: str (e.g. 'EUR')
+            :type: str (e.g. 'EUR')
+
+        :return float: the converted amount
         """
+
         try:
             if dest is None:
                 raise FixerioInvalidCurrency("Enter a valid 'dest' currency")
             if not _valid_currency(','.join([base, dest])):
                 raise FixerioInvalidCurrency('Please enter a valid currencies for the conversion')
             if base == dest:
-                return amount
+                return float(amount)
             elif self._in_cache(base, dest, date):
                 conversion_rate = self._return_cache(base, dest, date)
             else:
                 conversion_rate = self.get_rates(date=date, base=base, symbols=dest)
             return float(amount) * conversion_rate[dest]
         except ValueError as e:
-            raise ValueError('Please enter a valid numeric amount') from e
-        except Exception as f:
-            raise FixerioException('Error executing conversion. Please check for correct inputs') from f
+            raise ValueError('Please enter a valid numeric amount to convert') from e
+        except TypeError as e:
+            raise TypeError('Please enter valid currency codes.')
+
+#TODO create method to read/write to json and csv format
+#TODO check for file cache before calling the API (have an option to activate/deactivate file caching)

@@ -21,6 +21,8 @@ from exceptions import FixerioInvalidDate
 from exceptions import FixerioInvalidCurrency
 from exceptions import FixerioCurrencyUnavailable
 from string import whitespace
+import json
+import re
 
 HTTP_BASE_URL = 'http://api.fixer.io/'
 HTTPS_BASE_URL = 'https://api.fixer.io/'
@@ -47,6 +49,8 @@ ALL_CURRENCIES = {"AUD", "BGN", "BRL", "CAD", "CHF", "CNY", "CZK",
 # Modify currencies to specify which currencies to retrieve when 'symbols'
 # is omitted in the 'get_rates' method
 CURRENCIES = ALL_CURRENCIES
+CACHE_FILE_NAME = 'fixerio3-cache'
+CACHE_FILE_FORMAT = 'json'
 
 
 def _date(date=None):
@@ -188,6 +192,84 @@ def convert(amount: float, dest: str, base: str=DEFAULT_BASE, date=DEFAULT_DATE)
     return float(amount) * conversion_rate[dest]
 
 
+def write_to_file(data=None, file=CACHE_FILE_NAME, wformat=CACHE_FILE_FORMAT):
+    """
+    Writes cached data to a file in JSON or CSV format
+
+    :param data: JSON data to write to file
+    :param file: name of the file to write the cached data to
+    :param wformat: output format. Options are 'json' or 'csv'
+    :return: None
+    """
+    if data is None:
+        raise Exception('Data missing. Please specify the data to write to file.')
+    if file is None:
+        raise Exception('File name missing. Please specify the name of a file to write to.')
+
+    with open(file, 'w') as f:
+        if wformat == 'json':
+            json.dump(data, f, ensure_ascii=False)
+        elif wformat == 'csv':
+            f.write(data)
+        else:
+            raise ValueError("Please enter a valid write format. Supported values are 'json' (default), and 'csv'")
+
+
+def read_from_file(file=CACHE_FILE_NAME, rformat=CACHE_FILE_FORMAT):
+    """
+    Reads cached data from a file in JSON or CSV format
+
+    :param file: name of the file to read from
+    :param rformat: format of the file being read
+    :return: the data read from the file
+    """
+    if file is None:
+        raise Exception('File name missing. Please specify the name of a file to read from.')
+
+    with open(file, 'r') as f:
+        contents = f.read()
+        if rformat == 'json':
+            return json.loads(contents)
+        elif rformat == 'csv':
+            return contents
+        else:
+            raise ValueError("Please enter a valid rformat. Valid values are 'json', 'numpy', and 'csv'.")
+
+
+def _csv_to_json(data=None):
+    converted = dict()
+    base_date = re.compile(r'base,date\s')
+    currency = re.compile('[a-z]{3,3},{1}[1-9,.]+')
+    base = None
+    date = None
+    for line in data.splitlines():
+        if base_date.match(line) is not None:
+            base, date = line.split(',')[2:]
+            if base not in converted:
+                converted[base] = dict()
+            if date not in converted[base]:
+                converted[base][date] = dict()
+            continue
+        elif currency.match(line) is not None:
+            curr, rate = line.split(',', 1)
+            converted[base][date][curr] = rate
+            continue
+    else:
+        return converted
+
+
+def _json_to_csv(data=None, file=None):
+    output = ''
+    if data is None:
+        raise FixerioException('Data missing, please input json data to convert to csv.')
+    for x in data:
+        for y in data[x]:
+            output += x + ',' + y + ',' + '\n'
+            for z in data[x][y]:
+                output += z + ',' + data[x][y][z] + '\n'
+    return output
+
+
 class Fixerio:
     """ Class to interact with the free fixer.io API
         Similar to the 'get_rates' and 'convert' functions but uses caching to
@@ -206,12 +288,12 @@ class Fixerio:
                 if date in self._cache[base]:
                     if symbols is not None:
                         for x in symbols:
-                            if x not in self._cache[base][date]['rates']:
+                            if x not in self._cache[base][date]:
                                 return False
                         else:
                             return True
                     else:
-                        return CURRENCIES.difference({base}).issubset(self._cache[base][date]['rates'].keys())
+                        return CURRENCIES.difference({base}).issubset(self._cache[base][date].keys())
                 else:
                     return False
             else:
@@ -224,8 +306,8 @@ class Fixerio:
         try:
             if symbols is None:
                 symbols = CURRENCIES
-            cached_items = {x: self._cache[base][date]['rates'][x]
-                            for x in self._cache[base][date]['rates'] if x in symbols}
+            cached_items = {x: self._cache[base][date][x]
+                            for x in self._cache[base][date] if x in symbols}
             return cached_items
         except KeyError as e:
             raise ValueError('Error returning cache. Make sure to first check if the '
@@ -240,7 +322,7 @@ class Fixerio:
                 self._cache[base] = dict()
             if date not in self._cache[base]:
                 self._cache[base][date] = dict()
-            self._cache[base][date]['rates'] = json_data['rates']
+            self._cache[base][date] = json_data['rates']
             return None
         except KeyError as e:
             raise FixerioException("Error caching data. Make sure you are passing in the "

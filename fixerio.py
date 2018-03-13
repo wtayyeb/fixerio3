@@ -5,7 +5,7 @@ The independent functions fetch data every time from the API but the methods on 
 objects use caching to avoid having to wait for API queries.
 
 get_rates(date: str = DEFAULT_DATE, base: str = DEFAULT_BASE, symbols: str = None) -> dict:
-convert(amount: float, dest: str, base: str = DEFAULT_BASE, date: str = DEFAULT_DATE) -> float:
+convert(amount: float, target: str, base: str = DEFAULT_BASE, date: str = DEFAULT_DATE) -> float:
 
 NOTE: Whenever using the class, you are responsible for calling the clear_cache() method
 whenever you see fit so that the cache does not get to large in size (which shouldn't be
@@ -24,7 +24,6 @@ from string import whitespace
 import json
 import re
 
-HTTP_BASE_URL = 'http://api.fixer.io/'
 HTTPS_BASE_URL = 'https://api.fixer.io/'
 # Modify BASE_URL if you want to use a different URL to fetch data
 BASE_URL = HTTPS_BASE_URL
@@ -49,7 +48,7 @@ ALL_CURRENCIES = {"AUD", "BGN", "BRL", "CAD", "CHF", "CNY", "CZK",
 # Modify currencies to specify which currencies to retrieve when 'symbols'
 # is omitted in the 'get_rates' method
 CURRENCIES = ALL_CURRENCIES
-CACHE_FILE_NAME = 'fixerio3-cache'
+CACHE_FILE_NAME = 'fixerio3_cache'
 CACHE_FILE_FORMAT = 'json'
 
 
@@ -121,6 +120,7 @@ def _valid_currency(args):
 
 
 def _format_currency(currencies):
+    """ Returns a list of currencies to be iterated over """
     try:
         if isinstance(currencies, str):
             if len(currencies) > 3:
@@ -169,13 +169,13 @@ def get_rates(date: str=DEFAULT_DATE, base: str=DEFAULT_BASE, symbols=None) -> d
     return json_data['rates']
 
 
-def convert(amount: float, dest: str, base: str=DEFAULT_BASE, date=DEFAULT_DATE) -> float:
-    """ Converts an amount from the base currency to the dest currency (NO CACHING)
+def convert(amount: float, target: str, base: str=DEFAULT_BASE, date=DEFAULT_DATE) -> float:
+    """ Converts an amount from the base currency to the target currency (NO CACHING)
 
         amount: REQUIRED type float or str
             an integer or float amount of the base currency to convert.
 
-        dest: REQUIRED type str
+        target: REQUIRED type str
             a 3 letter currency code such as 'JPY'.
 
         base: OPTIONAL type str
@@ -186,15 +186,16 @@ def convert(amount: float, dest: str, base: str=DEFAULT_BASE, date=DEFAULT_DATE)
             a date form January 4th 1999 to today in the format 'yyyy-mm-dd'
             or 'latest'. If omitted, DEFAULT_DATE is used (usually 'latest' if you haven't changed it).
     """
-    if base == dest:
+    if base == target:
         return amount
-    conversion_rate = get_rates(date=date, base=base, symbols=dest)
-    return float(amount) * conversion_rate[dest]
+    conversion_rate = get_rates(date=date, base=base, symbols=target)
+    return float(amount) * conversion_rate[target]
 
 
 def write_to_file(data=None, file=CACHE_FILE_NAME, wformat=CACHE_FILE_FORMAT):
     """
-    Writes cached data to a file in JSON or CSV format
+    Writes cached data to a file in JSON or CSV format.
+    If the specified file name already exists, it is overwritten
 
     :param data: JSON data to write to file
     :param file: name of the file to write the cached data to
@@ -210,7 +211,7 @@ def write_to_file(data=None, file=CACHE_FILE_NAME, wformat=CACHE_FILE_FORMAT):
         if wformat == 'json':
             json.dump(data, f, ensure_ascii=False)
         elif wformat == 'csv':
-            f.write(data)
+            f.write(_json_to_csv(data))
         else:
             raise ValueError("Please enter a valid write format. Supported values are 'json' (default), and 'csv'")
 
@@ -237,9 +238,10 @@ def read_from_file(file=CACHE_FILE_NAME, rformat=CACHE_FILE_FORMAT):
 
 
 def _csv_to_json(data=None):
+    """ Takes properly formatted csv data and returns it in json format """
     converted = dict()
-    base_date = re.compile(r'base,date\s')
-    currency = re.compile('[a-z]{3,3},{1}[1-9,.]+')
+    base_date = re.compile(r'base,date')
+    currency = re.compile(r'[A-Z]{3,3},{1}[0-9,.]+')
     base = None
     date = None
     for line in data.splitlines():
@@ -258,32 +260,55 @@ def _csv_to_json(data=None):
         return converted
 
 
-def _json_to_csv(data=None, file=None):
+def _json_to_csv(data=None):
+    """ Takes properly formatted json data and returns it in csv format """
     output = ''
     if data is None:
         raise FixerioException('Data missing, please input json data to convert to csv.')
     for x in data:
         for y in data[x]:
-            output += x + ',' + y + ',' + '\n'
+            output += 'base,date,' + x + ',' + y + '\n'
             for z in data[x][y]:
-                output += z + ',' + data[x][y][z] + '\n'
+                output += z + ',' + str(data[x][y][z]) + '\n'
     return output
 
 
 class Fixerio:
-    """ Class to interact with the free fixer.io API
-        Similar to the 'get_rates' and 'convert' functions but uses caching to
-        avoid invoking the fixer.io API on every request
+    """
+    Class to interact with the free fixer.io API
+    Similar to the 'get_rates' and 'convert' functions but uses caching to
+    avoid invoking the fixer.io API on every request
     """
 
-    def __init__(self):
+    def __init__(self, cache_to_file=False, out_name=CACHE_FILE_NAME, out_format=CACHE_FILE_FORMAT,
+                 in_file=None, in_format=CACHE_FILE_FORMAT):
         self._cache = dict()
+        self._cache_to_file = cache_to_file
+        self._out_file_name = out_name
+        self._format_to_file = out_format
+        if in_file is not None:
+            if in_format == 'json':
+                self._cache = read_from_file(in_file, in_format)
+            elif in_format == 'csv':
+                self._cache = _csv_to_json(read_from_file(in_file, in_format))
+            else:
+                raise ValueError("Please enter a valid in_file format. "
+                                 "Supported values are 'json' (default), and 'csv'")
 
     def _in_cache(self, base, symbols, date=_date()):
         """ Checks to see if the specified rates have already been retrieved and are in the cache """
         try:
-            if symbols is not None:
-                symbols = _format_currency(symbols)
+            if symbols is None:
+                in_date = dtdate(*(int(x.strip('0')) for x in date.split('-')))
+                if in_date < dtdate(2011, 1, 3):
+                    symbols = list(CURRENCIES.difference({base, 'ISK', 'ILS'}))
+                elif in_date < dtdate(2018, 2, 1):
+                    symbols = list(CURRENCIES.difference({base, 'ISK'}))
+                else:
+                    symbols = list(CURRENCIES.difference({base}))
+
+            symbols = _format_currency(symbols)
+
             if base in self._cache:
                 if date in self._cache[base]:
                     if symbols is not None:
@@ -355,14 +380,15 @@ class Fixerio:
 
         :return dict: a dictionary with the requested rates
         """
-
         if not _valid_date(date):
             raise FixerioInvalidDate('Please enter a valid date')
         if not _valid_currency(base):
             raise FixerioInvalidCurrency('Please enter a valid base currency')
         if not _valid_currency(symbols):
-            raise FixerioInvalidCurrency('Please enter valid symbols (aka destination currency)')
+            raise FixerioInvalidCurrency('Please enter valid symbols (aka target currency)')
         if self._in_cache(base, symbols, _date(date)):
+            if self._cache_to_file:
+                write_to_file(self._cache, self._out_file_name, self._format_to_file)
             return self._return_cache(base, symbols, _date(date))
         else:
             url = BASE_URL + date
@@ -377,15 +403,14 @@ class Fixerio:
                 raise FixerioException('Something went wrong with your request.'
                                        'Error message: {}'.format(json_data['error']))
             self._to_cache(json_data)
-            try:
-                return json_data['rates']
-            except KeyError:
-                raise FixerioException('Something went wrong with your request.'
-                                       'Please check your inputs and try again.')
+            if self._cache_to_file:
+                write_to_file(self._cache, self._out_file_name, self._format_to_file)
 
-    def convert(self, amount, dest, base=DEFAULT_BASE, date=DEFAULT_DATE):
+            return json_data['rates']
+
+    def convert(self, amount, target, base=DEFAULT_BASE, date=DEFAULT_DATE):
         """
-        Converts an amount from the base currency to the dest currency.
+        Converts an amount from the base currency to the target currency.
         Fetches from cache if available, otherwise from the API call.
 
         amount
@@ -400,29 +425,27 @@ class Fixerio:
             :param base: currency to quote rates against. If omitted, DEFAULT_BASE is used
             :type: str (e.g. 'USD')
 
-        dest
-            :param dest: currency to convert to
+        target
+            :param target: currency to convert to
             :type: str (e.g. 'EUR')
 
         :return float: the converted amount
         """
-
         try:
-            if dest is None:
-                raise FixerioInvalidCurrency("Enter a valid 'dest' currency")
-            if not _valid_currency(','.join([base, dest])):
+            if target is None:
+                raise FixerioInvalidCurrency("Enter a valid 'target' currency")
+            if not _valid_currency(','.join([base, target])):
                 raise FixerioInvalidCurrency('Please enter a valid currencies for the conversion')
-            if base == dest:
+            if base == target:
                 return float(amount)
-            elif self._in_cache(base, dest, date):
-                conversion_rate = self._return_cache(base, dest, date)
+            elif self._in_cache(base, target, date):
+                conversion_rate = self._return_cache(base, target, date)
             else:
-                conversion_rate = self.get_rates(date=date, base=base, symbols=dest)
-            return float(amount) * conversion_rate[dest]
+                conversion_rate = self.get_rates(date=date, base=base, symbols=target)
+            return float(amount) * float(conversion_rate[target])
         except ValueError as e:
             raise ValueError('Please enter a valid numeric amount to convert') from e
         except TypeError as e:
-            raise TypeError('Please enter valid currency codes.')
+            raise TypeError('Please enter valid currency codes.') from e
 
-#TODO create method to read/write to json and csv format
-#TODO check for file cache before calling the API (have an option to activate/deactivate file caching)
+#TODO add support for API keys (just added)

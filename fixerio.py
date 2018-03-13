@@ -24,9 +24,9 @@ from string import whitespace
 import json
 import re
 
-HTTPS_BASE_URL = 'https://api.fixer.io/'
-# Modify BASE_URL if you want to use a different URL to fetch data
-BASE_URL = HTTPS_BASE_URL
+OPEN_BASE_URL = 'https://api.fixer.io/'
+FREE_BASE_URL = 'http://data.fixer.io/api/'
+PAID_BASE_URL = 'https://data.fixer.io/api/'
 # Modify DEFAULT BASE if you want to use a different base when 'base' is
 # omitted in the 'convert' or 'get_rates' methods
 DEFAULT_BASE = 'USD'
@@ -34,12 +34,8 @@ LATEST = 'latest'
 # Modify DEFAULT_DATE if you want use a different date when 'date' is
 # omitted in the 'convert' or 'get_rates' methods
 DEFAULT_DATE = LATEST
-MIN_DATE = dtdate(1999, 1, 4)
+MIN_DATE = dtdate(1999, 1, 4)  # DO NOT CHANGE/REMOVE THIS
 UPDATE_TIME_UTC = 15  # rates are updated at 3pm (15:00) UTC (10am ET)
-# Modify SPECIFIC_CURRENCIES if you want to only retrieve a subset of
-# ALL_CURRENCIES when 'symbols' is omitted in the 'get_rates' method.
-# You need to also modify the CURRENCIES variable below
-SPECIFIC_CURRENCIES = set()
 ALL_CURRENCIES = {"AUD", "BGN", "BRL", "CAD", "CHF", "CNY", "CZK",
                   "DKK", "EUR", "GBP", "HKD", "HRK", "HUF", "IDR",
                   "ILS", "INR", "ISK", "JPY", "KRW", "MXN", "MYR",
@@ -48,8 +44,6 @@ ALL_CURRENCIES = {"AUD", "BGN", "BRL", "CAD", "CHF", "CNY", "CZK",
 # Modify currencies to specify which currencies to retrieve when 'symbols'
 # is omitted in the 'get_rates' method
 CURRENCIES = ALL_CURRENCIES
-CACHE_FILE_NAME = 'fixerio3_cache'
-CACHE_FILE_FORMAT = 'json'
 
 
 def _date(date=None):
@@ -138,7 +132,8 @@ def _format_currency(currencies):
                                          'either on a list or as a string of comma separated values') from e
 
 
-def get_rates(date: str=DEFAULT_DATE, base: str=DEFAULT_BASE, symbols=None) -> dict:
+def get_rates(date: str=DEFAULT_DATE, base: str=DEFAULT_BASE, symbols=None,
+              paid_membership=False, access_key=None) -> dict:
     """ Fetches rates for the given parameters (NO CACHING)
 
         date: OPTIONAL type str
@@ -153,23 +148,31 @@ def get_rates(date: str=DEFAULT_DATE, base: str=DEFAULT_BASE, symbols=None) -> d
             a string of comma separated currency codes like 'USD,JPY,EUR' or list like ['USD', 'EUR'].
             If omitted, all rates are returned for the corresponding base and date.
     """
-    url = BASE_URL + date
-    if symbols is None:
-        payload = dict(base=base)
-    elif isinstance(symbols, list):
-        symbols = ','.join(symbols)
-        payload = dict(base=base, symbols=symbols)
-    elif isinstance(symbols, str):
-        payload = dict(base=base, symbols=symbols)
+    if paid_membership:
+        if access_key is not None:
+            url = PAID_BASE_URL + date
+        else:
+            raise FixerioException('When using the paid membership an API kEY must also be provided.')
     else:
+        url = OPEN_BASE_URL + date
+        access_key = None
+
+    if isinstance(symbols, list):
+        symbols = ','.join(symbols)
+    elif not (isinstance(symbols, str) or (symbols is None)):
         raise ValueError(""" Invalid value entered for the symbols parameter.
-                             Check your input and try again """)
+                                     Check your input and try again """)
+    payload = (('access_key', access_key), ('base', base), ('symbols', symbols))
     response = requests.get(url, params=payload)
     json_data = response.json()
+    if 'error' in json_data:
+        raise FixerioException('Something went wrong with your request.\n'
+                               'Error message: {}'.format(json_data['error']))
     return json_data['rates']
 
 
-def convert(amount: float, target: str, base: str=DEFAULT_BASE, date=DEFAULT_DATE) -> float:
+def convert(amount: float, target: str, base: str=DEFAULT_BASE, date=DEFAULT_DATE,
+            paid_membership=False, access_key=None) -> float:
     """ Converts an amount from the base currency to the target currency (NO CACHING)
 
         amount: REQUIRED type float or str
@@ -188,11 +191,12 @@ def convert(amount: float, target: str, base: str=DEFAULT_BASE, date=DEFAULT_DAT
     """
     if base == target:
         return amount
-    conversion_rate = get_rates(date=date, base=base, symbols=target)
+    conversion_rate = get_rates(date=date, base=base, symbols=target,
+                                paid_membership=paid_membership, access_key=access_key)
     return float(amount) * conversion_rate[target]
 
 
-def write_to_file(data=None, file=CACHE_FILE_NAME, wformat=CACHE_FILE_FORMAT):
+def write_to_file(data=None, file=None, wformat=None):
     """
     Writes cached data to a file in JSON or CSV format.
     If the specified file name already exists, it is overwritten
@@ -216,7 +220,7 @@ def write_to_file(data=None, file=CACHE_FILE_NAME, wformat=CACHE_FILE_FORMAT):
             raise ValueError("Please enter a valid write format. Supported values are 'json' (default), and 'csv'")
 
 
-def read_from_file(file=CACHE_FILE_NAME, rformat=CACHE_FILE_FORMAT):
+def read_from_file(file=None, rformat=None):
     """
     Reads cached data from a file in JSON or CSV format
 
@@ -241,7 +245,7 @@ def _csv_to_json(data=None):
     """ Takes properly formatted csv data and returns it in json format """
     converted = dict()
     base_date = re.compile(r'base,date')
-    currency = re.compile(r'[A-Z]{3,3},{1}[0-9,.]+')
+    currency = re.compile(r'[A-Z]{3},{1}[0-9,.]+')
     base = None
     date = None
     for line in data.splitlines():
@@ -280,12 +284,21 @@ class Fixerio:
     avoid invoking the fixer.io API on every request
     """
 
-    def __init__(self, cache_to_file=False, out_name=CACHE_FILE_NAME, out_format=CACHE_FILE_FORMAT,
-                 in_file=None, in_format=CACHE_FILE_FORMAT):
+    def __init__(self, cache_to_file=False, out_name=None, out_format=None,
+                 in_file=None, in_format=None, paid_membership=False, access_key=None):
         self._cache = dict()
         self._cache_to_file = cache_to_file
         self._out_file_name = out_name
         self._format_to_file = out_format
+        if paid_membership:
+            if access_key is not None:
+                self._access_key = access_key
+                self._base_url = PAID_BASE_URL
+            else:
+                raise FixerioException('When using the paid membership an API kEY must also be provided.')
+        else:
+            self._access_key = None
+            self._base_url = OPEN_BASE_URL
         if in_file is not None:
             if in_format == 'json':
                 self._cache = read_from_file(in_file, in_format)
@@ -387,25 +400,19 @@ class Fixerio:
         if not _valid_currency(symbols):
             raise FixerioInvalidCurrency('Please enter valid symbols (aka target currency)')
         if self._in_cache(base, symbols, _date(date)):
-            if self._cache_to_file:
-                write_to_file(self._cache, self._out_file_name, self._format_to_file)
             return self._return_cache(base, symbols, _date(date))
         else:
-            url = BASE_URL + date
+            url = self._base_url + date
             symbols = _format_currency(symbols)
-            if symbols is None:
-                payload = dict(base=base)
-            else:
-                payload = dict(base=base, symbols=symbols)
+            payload = (('access_key', self._access_key), ('base', base), ('symbols', symbols))
             response = requests.get(url, params=payload)
             json_data = response.json()
             if 'error' in json_data:
-                raise FixerioException('Something went wrong with your request.'
+                raise FixerioException('Something went wrong with your request.\n'
                                        'Error message: {}'.format(json_data['error']))
             self._to_cache(json_data)
             if self._cache_to_file:
                 write_to_file(self._cache, self._out_file_name, self._format_to_file)
-
             return json_data['rates']
 
     def convert(self, amount, target, base=DEFAULT_BASE, date=DEFAULT_DATE):
@@ -447,5 +454,3 @@ class Fixerio:
             raise ValueError('Please enter a valid numeric amount to convert') from e
         except TypeError as e:
             raise TypeError('Please enter valid currency codes.') from e
-
-#TODO add support for API keys (just added)

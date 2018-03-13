@@ -3,9 +3,9 @@ import fixerio
 
 def main():
     """ Usage examples for the fixerio modules """
-    response = fixerio.convert(10, base='USD', dest='EUR', date='2018-01-29')
+    response = fixerio.convert(10, base='USD', target='EUR', date='2018-01-29', paid_membership=False, access_key=None)
     print(response, end='\n\n')
-    response = fixerio.convert(10, dest='EUR')
+    response = fixerio.convert(10, target='EUR')
     print(response, end='\n\n')
 
     response = fixerio.get_rates()

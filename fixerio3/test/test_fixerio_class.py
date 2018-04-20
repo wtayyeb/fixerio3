@@ -1,4 +1,4 @@
-import fixerio
+from fixerio3 import fixerio
 
 
 def main():

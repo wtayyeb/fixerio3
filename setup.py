@@ -1,13 +1,20 @@
 from setuptools import setup
+from io import open
 
 
 def readme():
-    with open('README.rst') as f:
-        return f.read()
+    with open('README.rst', encoding='utf-8') as f:
+        return '\n' + f.read()
+
+
+MAJOR               = 0
+MINOR               = 1
+MICRO               = 0
+VERSION = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
 
 
 setup(name='fixerio3',
-      version='0.0.1',
+      version=VERSION,
       description='A python3 API to interact with the fixer.io foreign exchange rates and currency conversion JSON API',
       long_description=readme(),
       classifiers=[

@@ -22,7 +22,7 @@ setup(name='fixerio3',
           'Intended Audience :: Developers',
           'Intended Audience :: Financial and Insurance Industry',
           'License :: OSI Approved :: MIT License',
-          'Operating System :: OS Independent'
+          'Operating System :: OS Independent',
           'Programming Language :: Python :: 3',
           'Topic :: Office/Business :: Financial',
           'Topic :: Software Development :: Build Tools',

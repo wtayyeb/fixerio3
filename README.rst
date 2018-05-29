@@ -1,5 +1,7 @@
+.. -*-restructuredtext-*-
+
 fixerio3: A Python 3+ API to interact with the fixer.io foreign exchange rates and currency conversion JSON API
-=========================
+===============================================================================================================
 
 .. image:: https://img.shields.io/badge/Made%20with-Python-1f425f.svg
     :target: https://www.python.org/
@@ -38,14 +40,14 @@ or clone and then install:
     $ python3 setup.py install
 
 Prerequisites
-------------
+-------------
 
 .. code:: bash
 
     $ pip install requests
 
 Usage and running tests
------------------
+-----------------------
 
 Sample usage and test cases are provided under the 'test' folder.
 

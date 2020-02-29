@@ -234,7 +234,7 @@ class Fixerio:
         """ Checks to see if the specified rates have already been retrieved and are in the cache """
         try:
             if symbols is None:
-                in_date = dtdate(*(int(x.strip('0')) for x in date.split('-')))
+                in_date = dtdate(*(int(x.lstrip('0')) for x in date.split('-')))
                 if in_date < dtdate(2011, 1, 3):
                     symbols = list(CURRENCIES.difference({base, 'ISK', 'ILS'}))
                 elif in_date < dtdate(2018, 2, 1):
